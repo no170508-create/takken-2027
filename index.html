@@ -129,5 +129,257 @@ document.getElementById("copyPrompt").onclick=async()=>{
 document.getElementById("reset").onclick=()=>{if(confirm("学習進捗をすべてリセットする？")){saved={};localStorage.removeItem(key);render()}};
 if("serviceWorker" in navigator && location.protocol.startsWith("http")) window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 </script>
-</body>
+</<script>
+
+(function(){
+
+  const KEY="takken2027_daily_logs";
+
+  const getLogs=()=>JSON.parse(localStorage.getItem(KEY)||"[]");
+
+  const saveLogs=a=>localStorage.setItem(KEY,JSON.stringify(a));
+
+  const style=document.createElement("style");
+
+  style.textContent=`
+
+  .record-box{background:white;border:1px solid #e0e8e3;border-radius:15px;padding:15px;margin:12px 0}
+
+  .record-box input,.record-box select,.record-box textarea{width:100%;padding:11px;margin:5px 0 12px;border:1px solid #d7e1da;border-radius:9px;font:inherit}
+
+  .record-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+
+  .record-stat{background:#eef5f0;padding:12px;border-radius:10px}
+
+  .record-stat b{display:block;font-size:21px;color:#173f35}
+
+  .record-stat small{color:#68766f}
+
+  .record-item{padding:11px 0;border-bottom:1px solid #edf1ee;font-size:13px}
+
+  `;
+
+  document.head.appendChild(style);
+
+  const tabs=document.querySelector(".tabs");
+
+  if(!tabs)return;
+
+  if(!document.getElementById("records")){
+
+    const btn=document.createElement("button");
+
+    btn.textContent="学習記録";
+
+    btn.dataset.tab="records";
+
+    tabs.appendChild(btn);
+
+    const section=document.createElement("section");
+
+    section.id="records";
+
+    section.className="hidden";
+
+    section.innerHTML=`
+
+      <h2>毎日の学習記録</h2>
+
+      <div class="record-grid">
+
+        <div class="record-stat"><b id="rMinutes">0</b><small>累計学習時間（分）</small></div>
+
+        <div class="record-stat"><b id="rQuestions">0</b><small>累計演習問題数</small></div>
+
+        <div class="record-stat"><b id="rAccuracy">—</b><small>累計正答率</small></div>
+
+        <div class="record-stat"><b id="rCount">0</b><small>記録件数</small></div>
+
+      </div>
+
+      <div class="record-box">
+
+        <h3>今日の学習を記録</h3>
+
+        <label>日付</label><input id="rDate" type="date">
+
+        <label>学習分野</label>
+
+        <select id="rDomain">
+
+          <option>権利関係</option><option>法令上の制限</option>
+
+          <option>宅建業法</option><option>税・その他</option>
+
+          <option>全分野・模試</option>
+
+        </select>
+
+        <div class="record-grid">
+
+          <div><label>学習時間（分）</label><input id="rTime" type="number" min="0" placeholder="60"></div>
+
+          <div><label>解いた問題数</label><input id="rQ" type="number" min="0" placeholder="30"></div>
+
+        </div>
+
+        <label>正解数</label><input id="rC" type="number" min="0" placeholder="25">
+
+        <label>学習メモ・疑問点</label>
+
+        <textarea id="rMemo" placeholder="今日理解できたこと、まだ曖昧なこと"></textarea>
+
+        <button class="primary" id="rSave">記録を保存</button>
+
+        <p id="rMessage"></p>
+
+      </div>
+
+      <div class="record-box">
+
+        <h3>最近の学習履歴</h3>
+
+        <div id="rHistory">まだ記録がありません。</div>
+
+        <button class="primary" id="rReport">ChatGPTに学習報告をコピー</button>
+
+      </div>
+
+      <div class="record-box">
+
+        <h3>バックアップ</h3>
+
+        <button id="rBackup">記録をバックアップ</button>
+
+      </div>`;
+
+    document.querySelector("main").appendChild(section);
+
+  }
+
+  function escapeText(s){
+
+    return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+  }
+
+  function render(){
+
+    const a=getLogs();
+
+    const minutes=a.reduce((s,x)=>s+x.time,0);
+
+    const questions=a.reduce((s,x)=>s+x.q,0);
+
+    const correct=a.reduce((s,x)=>s+x.c,0);
+
+    document.getElementById("rMinutes").textContent=minutes;
+
+    document.getElementById("rQuestions").textContent=questions;
+
+    document.getElementById("rAccuracy").textContent=questions?Math.round(correct/questions*100)+"%":"—";
+
+    document.getElementById("rCount").textContent=a.length;
+
+    document.getElementById("rHistory").innerHTML=a.length?
+
+      a.slice().reverse().slice(0,15).map(x=>
+
+      `<div class="record-item"><b>${escapeText(x.date)}｜${escapeText(x.domain)}</b><br>
+
+      ${x.time}分・${x.q}問中${x.c}問正解
+
+      ${x.memo?"<br>"+escapeText(x.memo):""}</div>`).join("")
+
+      :"まだ記録がありません。";
+
+  }
+
+  document.getElementById("rDate").value=new Date().toLocaleDateString("sv-SE");
+
+  document.getElementById("rSave").onclick=()=>{
+
+    const time=Number(document.getElementById("rTime").value)||0;
+
+    const q=Number(document.getElementById("rQ").value)||0;
+
+    const c=Number(document.getElementById("rC").value)||0;
+
+    const date=document.getElementById("rDate").value;
+
+    if(!date||c>q||(!time&&!q&&!document.getElementById("rMemo").value.trim())){
+
+      document.getElementById("rMessage").textContent="日付・問題数・正解数などを確認してね。";
+
+      return;
+
+    }
+
+    const a=getLogs();
+
+    a.push({date,domain:document.getElementById("rDomain").value,time,q,c,memo:document.getElementById("rMemo").value.trim()});
+
+    saveLogs(a);
+
+    ["rTime","rQ","rC","rMemo"].forEach(id=>document.getElementById(id).value="");
+
+    document.getElementById("rMessage").textContent="保存できたよ！";
+
+    render();
+
+  };
+
+  document.getElementById("rReport").onclick=()=>{
+
+    const a=getLogs();
+
+    const q=a.reduce((s,x)=>s+x.q,0);
+
+    const c=a.reduce((s,x)=>s+x.c,0);
+
+    const report="【宅建2027 学習報告】\n"+
+
+      "累計学習時間："+a.reduce((s,x)=>s+x.time,0)+"分\n"+
+
+      "累計問題数："+q+"問\n"+
+
+      "正答率："+(q?Math.round(c/q*100):0)+"%\n\n"+
+
+      a.slice(-15).map(x=>`${x.date}｜${x.domain}｜${x.time}分｜${x.q}問中${x.c}問正解｜${x.memo}`).join("\n")+
+
+      "\n\nこの記録から、理解度・弱点・復習優先順位・次の学習計画を分析して。";
+
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+
+      navigator.clipboard.writeText(report).then(()=>alert("コピーしたよ！ChatGPTに貼り付けてね。")).catch(()=>prompt("この文章をコピーしてね",report));
+
+    }else{prompt("この文章をコピーしてね",report);}
+
+  };
+
+  document.getElementById("rBackup").onclick=()=>{
+
+    const blob=new Blob([JSON.stringify(getLogs(),null,2)],{type:"application/json"});
+
+    const url=URL.createObjectURL(blob);
+
+    const link=document.createElement("a");
+
+    link.href=url;link.download="takken2027-records.json";link.click();
+
+    URL.revokeObjectURL(url);
+
+  };
+
+  document.querySelectorAll("[data-tab]").forEach(b=>{
+
+    b.addEventListener("click",()=>{if(b.dataset.tab==="records")render();});
+
+  });
+
+  render();
+
+})();
+
+</script></body>
 </html>
